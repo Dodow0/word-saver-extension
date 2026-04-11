@@ -1,0 +1,67 @@
+{
+  "manifest_version": 3,
+  "name": "WordSaver ",
+  "version": "1.0.0",
+  "description": "选中单词，自动获取释义 + 例句 + 翻译，加入单词本，支持导出 Excel / TXT",
+
+  "icons": {
+    "16":  "icons/icon.png",
+    "32":  "icons/icon.png",
+    "48":  "icons/icon.png",
+    "128": "icons/icon.png"
+  },
+
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": {
+      "16":  "icons/icon.png",
+      "32":  "icons/icon.png",
+      "48":  "icons/icon.png",
+      "128": "icons/icon.png"
+    },
+    "default_title": "WordSaver"
+  },
+
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "css": ["content.css"],
+      "run_at": "document_idle"
+    }
+  ],
+
+  "options_page": "options.html",
+
+  "permissions": [
+    "storage",
+    "contextMenus",
+    "notifications"
+  ],
+
+  "host_permissions": [
+    "*://*/*",
+    "https://api.dictionaryapi.dev/*",
+    "https://api.youdao.com/*",
+    "https://api-free.deepl.com/*"
+  ],
+
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "icons/*.png",
+        "content.css"
+      ],
+      "matches": ["*://*/*"]
+    }
+  ],
+
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'"
+  }
+}

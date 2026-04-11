@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* 统一定义输入框和下拉框的样式 */
+@layer components {
+  .input-field,
+  .select-field {
+    /* w-full: 占满整行宽度，解决和标题挤在一起的问题 */
+    /* bg, text, border: 适配深色主题的颜色 */
+    /* focus: 点击时外框变成紫色 */
+    @apply w-full block bg-[#313244] text-[#cdd6f4] border border-[#45475a] 
+           rounded-lg px-3 py-2 text-sm outline-none 
+           focus:border-[#cba6f7] transition-colors;
+  }
+
+  /* 专门给下拉框加一点右侧内边距，并且去掉浏览器默认的丑陋箭头，换成自定义的 */
+  .select-field {
+    @apply appearance-none;
+    padding-right: 2.5rem;
+    background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3e%3cpath stroke='%23a6adc8' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3e%3c/svg%3e");
+    background-position: right 0.5rem center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+  }
+}

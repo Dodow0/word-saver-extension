@@ -1,0 +1,117 @@
+/* content.css —— 注入到所有网页的弹窗样式，使用高优先级避免被宿主页覆盖 */
+
+#wordsaver-popup {
+  all: initial;
+  position: absolute;
+  z-index: 2147483647; /* 最高层级 */
+  width: 300px;
+  max-width: 90vw;
+  background: #1e1e2e;
+  color: #cdd6f4;
+  border: 1px solid #45475a;
+  border-radius: 12px;
+  padding: 14px 16px;
+  font-family: 'Georgia', serif;
+  font-size: 14px;
+  line-height: 1.6;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  box-sizing: border-box;
+  display: none;
+  animation: wb-fade-in 0.15s ease;
+}
+
+@keyframes wb-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+#wordsaver-popup .wb-header {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+#wordsaver-popup .wb-word {
+  font-size: 18px;
+  font-weight: 700;
+  color: #cba6f7;
+}
+
+#wordsaver-popup .wb-phonetic {
+  font-size: 12px;
+  color: #a6e3a1;
+}
+
+#wordsaver-popup .wb-defs {
+  margin: 0 0 8px 0;
+  padding-left: 16px;
+  color: #cdd6f4;
+}
+
+#wordsaver-popup .wb-defs li {
+  margin-bottom: 4px;
+}
+
+#wordsaver-popup .wb-defs em {
+  color: #89b4fa;
+  font-style: normal;
+  font-size: 12px;
+  margin-right: 4px;
+}
+
+#wordsaver-popup .wb-example {
+  margin: 6px 0;
+  font-style: italic;
+  color: #a6adc8;
+  font-size: 12px;
+  border-left: 2px solid #45475a;
+  padding-left: 8px;
+}
+
+#wordsaver-popup .wb-add-btn {
+  all: unset;
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  padding: 6px 0;
+  text-align: center;
+  background: #cba6f7;
+  color: #1e1e2e;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  box-sizing: border-box;
+  transition: opacity 0.2s;
+}
+
+#wordsaver-popup .wb-add-btn:hover { opacity: 0.85; }
+#wordsaver-popup .wb-add-btn:disabled { background: #45475a; color: #a6adc8; cursor: default; }
+
+#wordsaver-popup .wb-loading {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #a6adc8;
+  font-size: 13px;
+}
+
+#wordsaver-popup .wb-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #45475a;
+  border-top-color: #cba6f7;
+  border-radius: 50%;
+  animation: wb-spin 0.6s linear infinite;
+}
+
+@keyframes wb-spin {
+  to { transform: rotate(360deg); }
+}
+
+#wordsaver-popup .wb-error {
+  color: #f38ba8;
+  font-size: 13px;
+}

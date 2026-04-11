@@ -2,6 +2,13 @@
 
 WordSaver 是一款基于 Chrome Manifest V3 的轻量级划词翻译与生词本扩展程序。
 
+*效果预览*
+
+<div  align="center">   
+ <img src="./ws1.png" width = "250" height = "200" alt="划词翻译" align=center />
+ <img src="./ws2.png" width = "250" height = "300" alt="查看导出" align=center />
+ <img src="./ws3.png" width = "250" height = "300" alt="具体设置" align=center />
+ </div>
 
 ## ✨ 核心功能
 

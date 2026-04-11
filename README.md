@@ -2,13 +2,14 @@
 
 WordSaver 是一款基于 Chrome Manifest V3 的轻量级划词翻译与生词本扩展程序。
 
-*效果预览*
+<p align="center"><b>划词翻译</b></p>
+<p align="center"><img src="./ws1.png" width="260"></p>
 
-<div  align="center">   
- <img src="./ws1.png" width = "250" height = "200" alt="划词翻译" align=center />
- <img src="./ws2.png" width = "250" height = "300" alt="查看导出" align=center />
- <img src="./ws3.png" width = "250" height = "300" alt="具体设置" align=center />
- </div>
+<p align="center"><b>查看导出</b></p>
+<p align="center"><img src="./ws2.png" width="260"></p>
+
+<p align="center"><b>详细设置</b></p>
+<p align="center"><img src="./ws3.png" width="260"></p>
 
 ## ✨ 核心功能
 
@@ -61,21 +62,21 @@ pnpm run build
 
 ## ⚙️ 目录结构说明
 
-\`\`\`text
+```text
 wordsaver/
-├── public/                 # 静态资源 (Manifest, CSS, 图标等)
+├── public/        # 静态资源 (Manifest, CSS, 图标等)
 ├── src/
-│   ├── background/         # Service Worker (处理 API 请求与数据调度)
-│   ├── content/            # Content Script (注入网页的划词监听与 UI)
-│   ├── options/            # 插件设置页 (配置 API Key、交互方式)
-│   ├── popup/              # 插件弹窗页 (单词本列表、搜索、导出)
-│   ├── types/              # TypeScript 类型定义
-│   └── word.ts             # 核心数据结构接口
-├── popup.html              # 弹窗 HTML 骨架
-├── options.html            # 设置页 HTML 骨架
-├── vite.config.ts          # Vite 构建配置
-└── tailwind.config.js      # Tailwind CSS 配置
-\`\`\`
+│   ├── background/ # Service Worker (处理 API 请求与数据调度)
+│   ├── content/    # Content Script (注入网页的划词监听与 UI)
+│   ├── options/    # 插件设置页 (配置 API Key、交互方式)
+│   ├── popup/      # 插件弹窗页 (单词本列表、搜索、导出)
+│   ├── types/      # TypeScript 类型定义
+│   └── word.ts     # 核心数据结构接口
+├── popup.html      # 弹窗 HTML 骨架
+├── options.html    # 设置页 HTML 骨架
+├── vite.config.ts  # Vite 构建配置
+└── tailwind.config.js # Tailwind CSS 配置
+```
 
 ## 🔒 隐私与数据安全
 

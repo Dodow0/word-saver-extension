@@ -87,7 +87,21 @@
 }
 
 #wordsaver-popup .wb-add-btn:hover { opacity: 0.85; }
-#wordsaver-popup .wb-add-btn:disabled { background: #45475a; color: #a6adc8; cursor: default; }
+
+/* 已在单词本中（初始渲染为灰色，阻止点击） */
+#wordsaver-popup .wb-add-btn:disabled {
+  background: #313244;
+  color: #585b70;
+  cursor: default;
+  border: 1px solid #45475a;
+}
+ 
+/* 刚刚添加成功（JS 动态加的 class，绿色确认感） */
+#wordsaver-popup .wb-add-btn.wb-added {
+  background: #1e3a2f;
+  color: #a6e3a1;
+  cursor: default;
+}
 
 #wordsaver-popup .wb-loading {
   display: flex;

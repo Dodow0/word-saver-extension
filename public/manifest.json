@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "WordSaver ",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "选中单词，自动获取释义 + 例句 + 翻译，加入单词本，支持导出 Excel / TXT",
 
   "icons": {

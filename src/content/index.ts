@@ -60,13 +60,13 @@ document.addEventListener('mousedown', (e: MouseEvent) => {
 // ─── 向 Background 查词 ───────────────────────────────────────────────────────
 
 async function queryWord(word: string, x: number, y: number) {
-  const result: LookupWordResult = await chrome.runtime.sendMessage({
-    type: 'LOOKUP_WORD',
-    word,
-  })
+  const [result, checkResult] = await Promise.all([
+    chrome.runtime.sendMessage({ type: 'LOOKUP_WORD', word }) as Promise<LookupWordResult>,
+    chrome.runtime.sendMessage({ type: 'CHECK_WORD', word }) as Promise<{ exists: boolean }>,
+  ])
 
   if (result.success && result.data) {
-    showPopup(result.data, x, y)
+    showPopup(result.data, checkResult.exists, x, y)
   } else {
     showError(word, result.error ?? '查询失败，请检查网络')
   }
@@ -86,7 +86,7 @@ function showLoading(word: string, x: number, y: number) {
   positionPopup(el, x, y)
 }
 
-function showPopup(data: any, x: number, y: number) {
+function showPopup(data: any, alreadySaved: boolean, x: number, y: number) {
   const el = getOrCreatePopup()
   el.dataset.word = data.word.toLowerCase()
 
@@ -99,22 +99,42 @@ function showPopup(data: any, x: number, y: number) {
     ? `<p class="wb-example">"${data.examples[0]}"</p>`
     : ''
 
+  // 将含有 \n 的文本切分成多行 <div> 渲染
+  const translationHtml = data.translation
+    ? `<div class="wb-translation" style="color: #f9e2af; font-size: 13px; margin: 8px 0 4px 0; line-height: 1.6;">
+         ${escapeHTML(data.translation)
+           .split('\n')
+           .map(line => `<div style="margin-bottom: 2px;">${line}</div>`)
+           .join('')}
+       </div>`
+    : ''
+
+      // 按钮根据 alreadySaved 初始状态渲染，避免"先显示可点击再变灰"的闪烁
+  const btnHtml = alreadySaved
+    ? `<button class="wb-add-btn" disabled>✓ 已在单词本中</button>`
+    : `<button class="wb-add-btn">＋ 加入单词本</button>`
+
   el.innerHTML = `
     <div class="wb-header">
       <span class="wb-word">${escapeHTML(data.word)}</span>
       ${data.phonetic ? `<span class="wb-phonetic">${escapeHTML(data.phonetic)}</span>` : ''}
     </div>
-    <ul class="wb-defs">${defsHtml}</ul>
+    ${translationHtml} <ul class="wb-defs">${defsHtml}</ul>
     ${exampleHtml}
-    <button class="wb-add-btn" data-id="${data.id}">＋ 加入单词本</button>
+    ${btnHtml}
   `
 
-  el.querySelector('.wb-add-btn')?.addEventListener('click', () => {
-    chrome.runtime.sendMessage({ type: 'ADD_WORD', word: data })
+  // 只有在单词不存在时才绑定点击事件
+  if (!alreadySaved) {
     const btn = el.querySelector('.wb-add-btn') as HTMLButtonElement
-    btn.textContent = '✓ 已添加'
-    btn.disabled = true
-  })
+    btn.addEventListener('click', async () => {
+      btn.disabled = true
+      btn.textContent = '…'
+      await chrome.runtime.sendMessage({ type: 'ADD_WORD', word: data })
+      btn.textContent = '✓ 已在单词本中'
+      btn.classList.add('wb-added')
+    })
+  }
 
   positionPopup(el, x, y)
 }

@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { AppSettings } from '@/word'
 import { DEFAULT_SETTINGS } from '@/word'
+import DictionaryManager from './dictionarymanager'
 
 export default function App() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
@@ -158,6 +159,7 @@ export default function App() {
           </div>
         </Field>
       </section>
+      <DictionaryManager />
 
       {/* ── 数据管理 ─────────────────────────────────────────────────────── */}
       <section className="space-y-4">

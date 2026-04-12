@@ -45,147 +45,124 @@ export default function App() {
 // ─── 单词本主面板 ─────────────────────────────────────────────────────────────
 
 function WordsaverTab() {
-  const [words, setWords] = useState<WordEntry[]>([])
+  const [words, setWords] = useState<SavedWord[]>([])
+  const [allTags, setAllTags] = useState<string[]>([])
+  const [activeTag, setActiveTag] = useState<string>('')   // '' = 全部
   const [query, setQuery] = useState('')
-  const [expanded, setExpanded] = useState<string | null>(null)
+  const [expanded, setExpanded] = useState<number | null>(null)
   const [toast, setToast] = useState('')
 
-  // 从 storage 加载单词本
-  useEffect(() => {
-    chrome.storage.local.get('wordsaver', ({ wordsaver }) => {
-      setWords(wordsaver ?? [])
-    })
-    // 监听 storage 变化（比如 content script 新增了单词）
-    const listener = (changes: Record<string, chrome.storage.StorageChange>) => {
-      if (changes.wordsaver) setWords(changes.wordsaver.newValue ?? [])
-    }
-    chrome.storage.local.onChanged.addListener(listener)
-    return () => chrome.storage.local.onChanged.removeListener(listener)
-  }, [])
-
+  useEffect(() => { load(activeTag) }, [activeTag])
+ 
+  async function load(tag: string) {
+    const res = await chrome.runtime.sendMessage({ type: 'GET_WORDSAVER', tag: tag || undefined })
+    setWords(res.words)
+    setAllTags(res.allTags)
+  }
+ 
   const filtered = words.filter(w =>
-    w.word.toLowerCase().includes(query.toLowerCase()) ||
-    w.definitions.some(d => d.meaning.toLowerCase().includes(query.toLowerCase()))
+    !query || w.word.toLowerCase().includes(query.toLowerCase())
   )
-
-  function deleteWord(id: string) {
-    chrome.runtime.sendMessage({ type: 'DELETE_WORD', id })
+ 
+  function showToast(msg: string) { setToast(msg); setTimeout(() => setToast(''), 2200) }
+ 
+  async function deleteWord(id: number) {
+    await chrome.runtime.sendMessage({ type: 'DELETE_WORD', id })
+    load(activeTag)
   }
-
-  function showToast(msg: string) {
-    setToast(msg)
-    setTimeout(() => setToast(''), 2000)
+ 
+  async function updateTags(id: number, tags: string[]) {
+    await chrome.runtime.sendMessage({ type: 'UPDATE_TAGS', id, tags })
+    load(activeTag)
   }
-
-  // ── 导出 Excel ──────────────────────────────────────────────────────────────
+ 
+  // ── 导出（按当前 Tag 过滤的列表）────────────────────────────────────────────
   function exportExcel() {
-    if (!words.length) return showToast('单词本是空的')
-
-    const rows = words.map(w => ({
-      单词: w.word,
-      音标: w.phonetic ?? '',
-      词性与释义: w.definitions.map(d => `[${d.partOfSpeech}] ${d.meaning}`).join(' | '),
-      例句: w.examples.join(' | '),
-      中文翻译: w.translation ?? '',
+    if (!filtered.length) return showToast('没有可导出的单词')
+    const rows = filtered.map(w => ({
+      单词: w.word, 音标: w.phonetic ?? '',
+      释义: w.definitions.map(d => `[${d.partOfSpeech}] ${d.meaning}`).join(' | '),
+      例句: w.examples.join(' | '), 翻译: w.translation ?? '',
       标签: w.tags.join(', '),
       添加时间: new Date(w.addedAt).toLocaleString('zh-CN'),
-      来源页面: w.source ?? '',
     }))
-
     const ws = XLSX.utils.json_to_sheet(rows)
-
-    // 设置列宽
-    ws['!cols'] = [
-      { wch: 16 }, { wch: 12 }, { wch: 40 },
-      { wch: 40 }, { wch: 20 }, { wch: 12 },
-      { wch: 20 }, { wch: 30 },
-    ]
-
+    ws['!cols'] = [{ wch: 16 }, { wch: 12 }, { wch: 40 }, { wch: 40 }, { wch: 20 }, { wch: 16 }, { wch: 20 }]
     const wb = XLSX.utils.book_new()
-    XLSX.utils.book_append_sheet(wb, ws, '我的单词本')
-    XLSX.writeFile(wb, `Wordsaver_${formatDate()}.xlsx`)
+    XLSX.utils.book_append_sheet(wb, ws, activeTag ? `#${activeTag}` : '全部单词')
+    XLSX.writeFile(wb, `Wordsaver${activeTag ? `_${activeTag}` : ''}_${fmtDate()}.xlsx`)
     showToast('已导出 Excel ✓')
   }
-
-  // ── 导出 TXT ────────────────────────────────────────────────────────────────
+ 
   function exportTxt() {
-    if (!words.length) return showToast('单词本是空的')
-
-    const lines = words.map(w => {
-      const defs = w.definitions.map(d => `  [${d.partOfSpeech}] ${d.meaning}`).join('\n')
-      const examples = w.examples.map(e => `  > ${e}`).join('\n')
-      return [
-        `━━ ${w.word} ${w.phonetic ?? ''} ━━`,
-        defs,
-        examples,
-        w.translation ? `  译：${w.translation}` : '',
-      ].filter(Boolean).join('\n')
-    })
-
+    if (!filtered.length) return showToast('没有可导出的单词')
+    const lines = filtered.map(w => [
+      `━━ ${w.word} ${w.phonetic ?? ''} ━━`,
+      ...w.definitions.map(d => `  [${d.partOfSpeech}] ${d.meaning}`),
+      ...w.examples.map(e => `  > ${e}`),
+      w.translation ? `  译：${w.translation}` : '',
+      w.tags.length ? `  🏷 ${w.tags.join(', ')}` : '',
+    ].filter(Boolean).join('\n'))
     const blob = new Blob([lines.join('\n\n')], { type: 'text/plain;charset=utf-8' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `Wordsaver_${formatDate()}.txt`
-    a.click()
-    URL.revokeObjectURL(url)
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(blob),
+      download: `Wordsaver${activeTag ? `_${activeTag}` : ''}_${fmtDate()}.txt`,
+    })
+    a.click(); URL.revokeObjectURL(a.href)
     showToast('已导出 TXT ✓')
   }
-
+ 
   return (
     <div className="flex flex-col h-full">
-      {/* 搜索栏 + 导出按钮 */}
+      {/* 搜索 + 导出 */}
       <div className="flex items-center gap-2 px-4 py-3 border-b border-[#313244]">
-        <input
-          value={query}
-          onChange={e => setQuery(e.target.value)}
-          placeholder="搜索单词或释义…"
+        <input value={query} onChange={e => setQuery(e.target.value)}
+          placeholder="搜索单词…"
           className="flex-1 bg-[#313244] text-[#cdd6f4] placeholder-[#585b70] text-sm
-                     rounded-lg px-3 py-1.5 outline-none focus:ring-1 focus:ring-[#cba6f7]"
-        />
-        <button
-          onClick={exportExcel}
-          title="导出 Excel"
-          className="px-2.5 py-1.5 bg-[#a6e3a1] text-[#1e1e2e] rounded-lg text-xs font-bold
-                     hover:opacity-80 transition-opacity"
-        >
+                     rounded-lg px-3 py-1.5 outline-none focus:ring-1 focus:ring-[#cba6f7]" />
+        <button onClick={exportExcel}
+          className="px-2.5 py-1.5 bg-[#a6e3a1] text-[#1e1e2e] rounded-lg text-xs font-bold hover:opacity-80">
           XLS
         </button>
-        <button
-          onClick={exportTxt}
-          title="导出 TXT"
-          className="px-2.5 py-1.5 bg-[#89b4fa] text-[#1e1e2e] rounded-lg text-xs font-bold
-                     hover:opacity-80 transition-opacity"
-        >
+        <button onClick={exportTxt}
+          className="px-2.5 py-1.5 bg-[#89b4fa] text-[#1e1e2e] rounded-lg text-xs font-bold hover:opacity-80">
           TXT
         </button>
       </div>
-
+ 
+      {/* Tag 过滤栏 */}
+      {allTags.length > 0 && (
+        <div className="flex gap-1.5 px-4 py-2 overflow-x-auto border-b border-[#313244] flex-shrink-0">
+          <TagPill label="全部" active={activeTag === ''} onClick={() => setActiveTag('')} />
+          {allTags.map(t => (
+            <TagPill key={t} label={`#${t}`} active={activeTag === t} onClick={() => setActiveTag(t)} />
+          ))}
+        </div>
+      )}
+ 
       {/* 统计行 */}
       <div className="px-4 py-1.5 text-[11px] text-[#585b70]">
-        共 {words.length} 个单词
-        {query && ` · 匹配 ${filtered.length} 个`}
+        {activeTag ? `#${activeTag} · ` : ''}{filtered.length} 个单词
       </div>
-
+ 
       {/* 单词列表 */}
       <ul className="flex-1 overflow-y-auto px-3 pb-3 space-y-1">
         {filtered.length === 0 && (
           <li className="text-center text-[#585b70] text-sm py-12">
-            {query ? '没有匹配的单词' : '单词本还是空的，去网页上选词吧 ✦'}
+            {query ? '没有匹配的单词' : '单词本还是空的 ✦'}
           </li>
         )}
         {filtered.map(word => (
-          <WordCard
-            key={word.id}
-            word={word}
+          <WordCard key={word.id} word={word}
             expanded={expanded === word.id}
-            onToggle={() => setExpanded(expanded === word.id ? null : word.id)}
-            onDelete={() => deleteWord(word.id)}
+            onToggle={() => setExpanded(expanded === word.id ? null : word.id!)}
+            onDelete={() => deleteWord(word.id!)}
+            onUpdateTags={tags => updateTags(word.id!, tags)}
+            allTags={allTags}
           />
         ))}
       </ul>
-
-      {/* Toast 提示 */}
+ 
       {toast && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 bg-[#cba6f7] text-[#1e1e2e]
                         text-xs font-semibold px-4 py-2 rounded-full shadow-lg">
@@ -195,98 +172,130 @@ function WordsaverTab() {
     </div>
   )
 }
-
-// ─── 单个单词卡片 ─────────────────────────────────────────────────────────────
-
-interface WordCardProps {
-  word: WordEntry
-  expanded: boolean
-  onToggle: () => void
-  onDelete: () => void
+ 
+// ─── Tag 胶囊 ──────────────────────────────────────────────────────────────────
+ 
+function TagPill({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button onClick={onClick}
+      className={`flex-shrink-0 px-2.5 py-0.5 rounded-full text-xs font-medium transition-colors ${
+        active ? 'bg-[#cba6f7] text-[#1e1e2e]' : 'bg-[#313244] text-[#a6adc8] hover:bg-[#45475a]'
+      }`}>
+      {label}
+    </button>
+  )
 }
-
-function WordCard({ word, expanded, onToggle, onDelete }: WordCardProps) {
+ 
+// ─── 单词卡片（含内联 Tag 编辑）──────────────────────────────────────────────
+ 
+interface WordCardProps {
+  word: SavedWord; expanded: boolean
+  onToggle: () => void; onDelete: () => void
+  onUpdateTags: (tags: string[]) => void; allTags: string[]
+}
+ 
+function WordCard({ word, expanded, onToggle, onDelete, onUpdateTags, allTags }: WordCardProps) {
+  const [tagInput, setTagInput] = useState('')
+ 
+  function addTag() {
+    const t = tagInput.trim().toLowerCase().replace(/\s+/g, '-')
+    if (!t || word.tags.includes(t)) { setTagInput(''); return }
+    onUpdateTags([...word.tags, t])
+    setTagInput('')
+  }
+ 
+  function removeTag(tag: string) {
+    onUpdateTags(word.tags.filter(t => t !== tag))
+  }
+ 
   return (
     <li className="rounded-xl border border-[#313244] hover:border-[#45475a] transition-colors">
-      {/* 折叠头部 */}
-      <button
-        onClick={onToggle}
-        className="w-full flex items-center justify-between px-4 py-2.5 text-left"
-      >
+      <button onClick={onToggle} className="w-full flex items-center justify-between px-4 py-2.5 text-left">
         <div className="flex items-baseline gap-2">
           <span className="text-[#cba6f7] font-semibold text-[15px]">{word.word}</span>
-          {word.phonetic && (
-            <span className="text-[#a6e3a1] text-[11px]">{word.phonetic}</span>
-          )}
+          {word.phonetic && <span className="text-[#a6e3a1] text-[11px]">{word.phonetic}</span>}
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-[#45475a] text-[11px]">
-            {word.definitions[0]?.partOfSpeech}
-          </span>
-          <span className="text-[#585b70] text-xs">{expanded ? '▲' : '▼'}</span>
+        <div className="flex items-center gap-1.5">
+          {word.tags.slice(0, 2).map(t => (
+            <span key={t} className="text-[10px] bg-[#313244] text-[#a6adc8] px-1.5 py-0.5 rounded-full">
+              #{t}
+            </span>
+          ))}
+          <span className="text-[#585b70] text-xs ml-1">{expanded ? '▲' : '▼'}</span>
         </div>
       </button>
-
-      {/* 展开内容 */}
+ 
       {expanded && (
         <div className="px-4 pb-3 space-y-2 border-t border-[#313244]">
-          {/* 释义 */}
           <ul className="mt-2 space-y-1">
             {word.definitions.slice(0, 3).map((d, i) => (
               <li key={i} className="text-sm text-[#cdd6f4]">
-                <span className="text-[#89b4fa] text-xs mr-1">[{d.partOfSpeech}]</span>
-                {d.meaning}
+                <span className="text-[#89b4fa] text-xs mr-1">[{d.partOfSpeech}]</span>{d.meaning}
               </li>
             ))}
           </ul>
-
-          {/* 例句 */}
           {word.examples[0] && (
             <p className="text-xs text-[#a6adc8] italic border-l-2 border-[#45475a] pl-2">
               {word.examples[0]}
             </p>
           )}
-
-          {/* 中文翻译 */}
-          {word.translation && (
-            <p className="text-xs text-[#f9e2af]">译：{word.translation}</p>
-          )}
-
-          {/* 底部操作行 */}
-          <div className="flex items-center justify-between pt-1">
+          {word.translation && <p className="text-xs text-[#f9e2af]"> {word.translation}</p>}
+ 
+          {/* Tag 编辑区 */}
+          <div className="pt-1 space-y-1.5">
+            <div className="flex flex-wrap gap-1">
+              {word.tags.map(t => (
+                <span key={t} className="flex items-center gap-1 text-[11px] bg-[#313244]
+                                         text-[#cba6f7] px-2 py-0.5 rounded-full">
+                  #{t}
+                  <button onClick={() => removeTag(t)} className="text-[#585b70] hover:text-[#f38ba8]">×</button>
+                </span>
+              ))}
+            </div>
+            {/* 快速添加已有 Tag */}
+            {allTags.filter(t => !word.tags.includes(t)).length > 0 && (
+              <div className="flex flex-wrap gap-1">
+                {allTags.filter(t => !word.tags.includes(t)).slice(0, 6).map(t => (
+                  <button key={t} onClick={() => onUpdateTags([...word.tags, t])}
+                    className="text-[10px] text-[#585b70] border border-[#313244] px-1.5 py-0.5
+                               rounded-full hover:border-[#cba6f7] hover:text-[#cba6f7] transition-colors">
+                    +#{t}
+                  </button>
+                ))}
+              </div>
+            )}
+            {/* 新 Tag 输入 */}
+            <div className="flex gap-1.5">
+              <input value={tagInput} onChange={e => setTagInput(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && addTag()}
+                placeholder="新建 Tag…"
+                className="flex-1 bg-[#181825] text-[#cdd6f4] placeholder-[#45475a] text-xs
+                           rounded-lg px-2.5 py-1 outline-none focus:ring-1 focus:ring-[#cba6f7]" />
+              <button onClick={addTag}
+                className="px-2.5 py-1 bg-[#313244] text-[#a6adc8] rounded-lg text-xs hover:bg-[#45475a]">
+                添加
+              </button>
+            </div>
+          </div>
+ 
+          <div className="flex items-center justify-between pt-0.5">
             <span className="text-[10px] text-[#45475a]">
               {new Date(word.addedAt).toLocaleDateString('zh-CN')}
             </span>
-            <button
-              onClick={onDelete}
-              className="text-[#f38ba8] text-xs hover:underline"
-            >
-              删除
-            </button>
+            <button onClick={onDelete} className="text-[#f38ba8] text-xs hover:underline">删除</button>
           </div>
         </div>
       )}
     </li>
   )
 }
-
-// ─── 设置页（简版，完整版在 options 页） ──────────────────────────────────────
-
+ 
 function SettingsTab() {
-  function openOptions() {
-    chrome.runtime.openOptionsPage()
-  }
-
   return (
     <div className="px-4 py-6 space-y-4">
-      <p className="text-sm text-[#a6adc8]">
-        在设置页中配置词典 API、翻译接口和触发方式。
-      </p>
-      <button
-        onClick={openOptions}
-        className="w-full py-2 bg-[#313244] text-[#cdd6f4] rounded-lg text-sm
-                   hover:bg-[#45475a] transition-colors"
-      >
+      <p className="text-sm text-[#a6adc8]">在设置页中配置词典、API 和触发方式。</p>
+      <button onClick={() => chrome.runtime.openOptionsPage()}
+        className="w-full py-2 bg-[#313244] text-[#cdd6f4] rounded-lg text-sm hover:bg-[#45475a]">
         打开完整设置页 →
       </button>
     </div>
@@ -295,6 +304,6 @@ function SettingsTab() {
 
 // ─── 工具函数 ─────────────────────────────────────────────────────────────────
 
-function formatDate() {
+function fmtDate() {
   return new Date().toISOString().slice(0, 10)
 }

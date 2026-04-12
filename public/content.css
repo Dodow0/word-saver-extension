@@ -129,3 +129,55 @@
   color: #f38ba8;
   font-size: 13px;
 }
+
+/* 自定义划词弹窗内部的滚动条 (严格限定作用域，不污染宿主网页) */
+#wordsaver-popup::-webkit-scrollbar {
+  width: 6px;
+}
+
+#wordsaver-popup::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#wordsaver-popup::-webkit-scrollbar-thumb {
+  background: #45475a;
+  border-radius: 10px;
+}
+
+#wordsaver-popup::-webkit-scrollbar-thumb:hover {
+  background: #cba6f7;
+}
+
+/* Tag 栏 */
+#wordsaver-popup .wb-tag-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 0 8px 0;
+  border-bottom: 1px solid #313244;
+  margin-bottom: 8px;
+}
+
+#wordsaver-popup .wb-tag-pill {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-family: 'Georgia', serif;
+  background: #313244;
+  color: #a6adc8;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  user-select: none;
+}
+
+#wordsaver-popup .wb-tag-pill:hover {
+  background: #45475a;
+  color: #cdd6f4;
+}
+
+#wordsaver-popup .wb-tag-pill.wb-tag-active {
+  background: #cba6f7;
+  color: #1e1e2e;
+  font-weight: 600;
+}

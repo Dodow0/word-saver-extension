@@ -24,3 +24,25 @@
     background-size: 1.5em 1.5em;
   }
 }
+
+/* 自定义全局滚动条 (作用于 Popup 和 Options) */
+::-webkit-scrollbar {
+  width: 6px;  /* 垂直滚动条的宽度 */
+  height: 6px; /* 水平滚动条的高度 */
+}
+
+/* 滚动条轨道 (透明背景，融入整体) */
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+/* 滚动条滑块 (默认使用次级边框色，圆角设计) */
+::-webkit-scrollbar-thumb {
+  background: #45475a; 
+  border-radius: 10px;
+}
+
+/* 鼠标悬浮在滑块上时 (高亮为项目的主题紫) */
+::-webkit-scrollbar-thumb:hover {
+  background: #cba6f7;
+}

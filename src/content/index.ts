@@ -5,6 +5,14 @@ import type { LookupWordResult } from '@/word'
 
 let popupEl: HTMLDivElement | null = null
 let hideTimer: ReturnType<typeof setTimeout> | null = null
+let sessionTag: string = ''        // 当前会话选中的 tag
+let allSavedTags: string[] = []    // 历史 tag 列表缓存
+
+;(async () => {
+  const res = await chrome.runtime.sendMessage({ type: 'GET_WORDSAVER' })
+  if (res?.allTags) allSavedTags = res.allTags
+})()
+
 
 // ─── 监听选中文字 ─────────────────────────────────────────────────────────────
 
@@ -127,6 +135,15 @@ function showPopup(data: any, alreadySaved: boolean, x: number, y: number) {
            .join('')}
        </div>`
     : ''
+  // ── Tag 栏（只在有历史 tag 时显示）──────────────────────────────────
+  const tagBarHtml = allSavedTags.length > 0
+    ? `<div class="wb-tag-bar">
+        <span class="wb-tag-pill${sessionTag === '' ? ' wb-tag-active' : ''}" data-tag="">全部</span>
+        ${allSavedTags.map(t =>
+          `<span class="wb-tag-pill${sessionTag === t ? ' wb-tag-active' : ''}" data-tag="${escapeHTML(t)}">#${escapeHTML(t)}</span>`
+        ).join('')}
+      </div>`
+    : ''
 
       // 按钮根据 alreadySaved 初始状态渲染，避免"先显示可点击再变灰"的闪烁
   const btnHtml = alreadySaved
@@ -134,22 +151,48 @@ function showPopup(data: any, alreadySaved: boolean, x: number, y: number) {
     : `<button class="wb-add-btn">＋ 加入单词本</button>`
 
   el.innerHTML = `
+    ${tagBarHtml}
     <div class="wb-header">
       <span class="wb-word">${escapeHTML(data.word)}</span>
       ${data.phonetic ? `<span class="wb-phonetic">${escapeHTML(data.phonetic)}</span>` : ''}
     </div>
-    ${translationHtml} <ul class="wb-defs">${defsHtml}</ul>
+    ${translationHtml}
+    <ul class="wb-defs">${defsHtml}</ul>
     ${exampleHtml}
     ${btnHtml}
   `
+    // ── tag 点击事件 ────────────────────────────────────────────────────
+  el.querySelectorAll<HTMLSpanElement>('.wb-tag-pill').forEach(pill => {
+    pill.addEventListener('click', (e) => {
+      e.stopPropagation()
+      sessionTag = pill.dataset.tag ?? ''
+      // 刷新高亮
+      el.querySelectorAll('.wb-tag-pill').forEach(p => p.classList.remove('wb-tag-active'))
+      pill.classList.add('wb-tag-active')
+      // 更新按钮文案
+      const btn = el.querySelector('.wb-add-btn') as HTMLButtonElement | null
+      if (btn && !btn.disabled) {
+        btn.textContent = `＋ 加入单词本${sessionTag ? `（#${sessionTag}）` : ''}`
+      }
+    })
+  })
 
-  // 只有在单词不存在时才绑定点击事件
+  // ── 保存按钮 ────────────────────────────────────────────────────────
   if (!alreadySaved) {
     const btn = el.querySelector('.wb-add-btn') as HTMLButtonElement
     btn.addEventListener('click', async () => {
       btn.disabled = true
       btn.textContent = '…'
-      await chrome.runtime.sendMessage({ type: 'ADD_WORD', word: data })
+      // 把当前 sessionTag 合并进 tags（去重）
+      const wordToSave = { ...data }
+      if (sessionTag && !wordToSave.tags.includes(sessionTag)) {
+        wordToSave.tags = [...(wordToSave.tags ?? []), sessionTag]
+      }
+      await chrome.runtime.sendMessage({ type: 'ADD_WORD', word: wordToSave })
+      // 更新本地 tag 缓存
+      if (sessionTag && !allSavedTags.includes(sessionTag)) {
+        allSavedTags = [...allSavedTags, sessionTag].sort()
+      }
       btn.textContent = '✓ 已在单词本中'
       btn.classList.add('wb-added')
     })

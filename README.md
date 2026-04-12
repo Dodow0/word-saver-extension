@@ -100,5 +100,9 @@ wordsaver/
 1. ~~增加词典导入（支持json、txt、csv），没精力调试其他格式了，已验证 [ecdict.csv](https://github.com/skywind3000/ECDICT)~~
 2. ~~识别重复单词~~
 3. ~~采用tag的方式分类，可按tag导出~~
-4. webdav
-5. ~~中文翻译~~
+4. ~~中文翻译~~
+5. 可以保存短语
+6. 发音功能
+7. ~~滑动栏外观修改~~
+8. ~~设置默认tag~~
+9. webdav

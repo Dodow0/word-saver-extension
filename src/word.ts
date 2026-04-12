@@ -82,5 +82,5 @@ export const DEFAULT_SETTINGS: AppSettings = {
   apiProvider: 'free-dictionary',
   autoTranslate: true,
   showPhonetic: true,
-  popupTrigger: 'select'
+  popupTrigger: 'select',  
 }

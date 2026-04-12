@@ -59,16 +59,29 @@ document.addEventListener('mousedown', (e: MouseEvent) => {
 
 // ─── 向 Background 查词 ───────────────────────────────────────────────────────
 
+// 修改 queryWord 函数
 async function queryWord(word: string, x: number, y: number) {
-  const [result, checkResult] = await Promise.all([
-    chrome.runtime.sendMessage({ type: 'LOOKUP_WORD', word }) as Promise<LookupWordResult>,
-    chrome.runtime.sendMessage({ type: 'CHECK_WORD', word }) as Promise<{ exists: boolean }>,
-  ])
+  // 设置一个 5 秒的保底超时
+  const timeout = new Promise((_, reject) => 
+    setTimeout(() => reject(new Error('查询超时')), 5000)
+  )
 
-  if (result.success && result.data) {
-    showPopup(result.data, checkResult.exists, x, y)
-  } else {
-    showError(word, result.error ?? '查询失败，请检查网络')
+  try {
+    const [result, checkResult] = await Promise.race([
+      Promise.all([
+        chrome.runtime.sendMessage({ type: 'LOOKUP_WORD', word }),
+        chrome.runtime.sendMessage({ type: 'CHECK_WORD', word })
+      ]),
+      timeout
+    ]) as [LookupWordResult, { exists: boolean }]
+
+    if (result.success && result.data) {
+      showPopup(result.data, checkResult.exists, x, y)
+    } else {
+      showError(word, result.error ?? '查询失败')
+    }
+  } catch (err) {
+    showError(word, '连接插件后台超时，请刷新页面重试')
   }
 }
 
@@ -90,20 +103,26 @@ function showPopup(data: any, alreadySaved: boolean, x: number, y: number) {
   const el = getOrCreatePopup()
   el.dataset.word = data.word.toLowerCase()
 
+ // 在 defsHtml map 里，兼容处理真实换行和字面量 \n
   const defsHtml = data.definitions
-    .slice(0, 3)
-    .map((d: any) => `<li><em>${d.partOfSpeech}</em> ${d.meaning}</li>`)
-    .join('')
+   .slice(0, 3)
+   .map((d: any) => {
+     // 增加 .replace(/\\n/g, '<br>') 来处理字面量 \n，并增加一点行高让排版更好看
+     const meaning = d.meaning
+        .replace(/\\n/g, '<br>') 
+        .replace(/\n/g, '<br>')
+     return `<li style="line-height: 1.6; margin-bottom: 6px;">${d.partOfSpeech ? `<em>${d.partOfSpeech}</em> ` : ''}${meaning}</li>`
+   })
+   .join('')
 
   const exampleHtml = data.examples[0]
     ? `<p class="wb-example">"${data.examples[0]}"</p>`
     : ''
-
   // 将含有 \n 的文本切分成多行 <div> 渲染
   const translationHtml = data.translation
     ? `<div class="wb-translation" style="color: #f9e2af; font-size: 13px; margin: 8px 0 4px 0; line-height: 1.6;">
-         ${escapeHTML(data.translation)
-           .split('\n')
+         ${escapeHTML(data.translation) // 先转义安全字符
+           .split('\n')                  // 再按真实换行符切割
            .map(line => `<div style="margin-bottom: 2px;">${line}</div>`)
            .join('')}
        </div>`

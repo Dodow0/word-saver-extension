@@ -2,11 +2,6 @@
 // Service Worker —— 插件的"后台服务器"
 
 import { db, lookupInDictionaries } from '@/db'
-
-console.log("DB loaded:", db)
-// 挂到全局，供调试用
-;(self as any).db = db
-;(self as any).lookup = lookupInDictionaries
 import { parseDict } from '@/dictParser'
 import type {
   ExtensionMessage,
@@ -20,17 +15,11 @@ import type { SavedWord } from '@/db'
 // ─── 消息路由 ──────────────────────────────────────────────────────────────────
 
 chrome.runtime.onMessage.addListener(
-  (message: ExtensionMessage, _sender, sendResponse) => {
-    // safe：无论 handler 内部是否抛异常，都保证调用 sendResponse
-    // 否则 content script 的 sendMessage 会永远挂起
+   (message: any, _sender, sendResponse) => {
     const safe = (p: Promise<unknown>) =>
-  p.then(res => {
-    console.log("✅ handleLookup返回:", res)
-    sendResponse(res)
-  }).catch(err => {
-    console.error("❌ handleLookup报错:", err)
-    sendResponse({ success: false, error: String(err) })
-  })
+      p.then(sendResponse).catch(err =>
+        sendResponse({ success: false, error: String(err) })
+      )
  
     switch (message.type) {
       case 'LOOKUP_WORD':
@@ -60,8 +49,11 @@ chrome.runtime.onMessage.addListener(
         return true
  
       // 词典管理
-      case 'UPLOAD_DICT':
-        safe(handleUploadDict(message as any))
+      case 'INIT_DICT':           // 创建词典元数据，返回 dictId
+        safe(handleInitDict(message as any))
+        return true
+      case 'WRITE_DICT_ENTRIES':  // 分批写入词条
+        safe(handleWriteDictEntries(message as any))
         return true
       case 'GET_DICTS':
         safe(handleGetDicts())
@@ -70,8 +62,13 @@ chrome.runtime.onMessage.addListener(
         safe(handleToggleDict((message as any).id, (message as any).active))
         return true
       case 'DELETE_DICT':
-        safe(handleDeleteDict((message as any).id))
+        safe(handleDeleteDict(message.id))
         return true
+ 
+      default:
+        // 未知消息类型：立即回复，防止 sendMessage 对端永远等待
+        sendResponse({ success: false, error: `Unknown message type: ${message.type}` })
+        return false
     }
   }
 )
@@ -188,58 +185,86 @@ async function handleUpdateTags(id: number, tags: string[]) {
 }
 
 // ─── 词典管理 ──────────────────────────────────────────────────────────────────
-
-async function handleUploadDict(msg: {
+// 拆成两步：INIT_DICT 创建元数据 → WRITE_DICT_ENTRIES 分批写词条
+// 避免把整个文件内容塞进一条消息（Chrome 限制 64MB）
+ 
+async function handleInitDict(msg: {
   name: string
-  format: 'txt' | 'csv' | 'tsv'
-  content: string
+  format: 'txt' | 'csv' | 'tsv' | 'json'
+  entryCount: number
 }) {
   try {
-    const { entries, warnings } = parseDict(msg.content, msg.format)
-    if (!entries.length) return { success: false, error: '未解析到有效词条' }
-
-    const dictId = await db.transaction('rw', db.dictionaries, db.dictEntries, async () => {
-      const id = await db.dictionaries.add({
-        name: msg.name,
-        format: msg.format,
-        entryCount: entries.length,
-        uploadedAt: Date.now(),
-        active: true,
-      })
-      await db.dictEntries.bulkAdd(
-        entries.map(e => ({
-          ...e,
-          word: e.word.trim(),
-          word_lower: e.word.trim().toLowerCase(),
-          dictId: id as number
-      }))
-)
-      return id
-    })
-
-    return { success: true, dictId, entryCount: entries.length, warnings }
+    const dictId = await db.dictionaries.add({
+      name: msg.name,
+      format: msg.format,
+      entryCount: msg.entryCount,
+      uploadedAt: Date.now(),
+      active: true,
+    }) as number
+    return { success: true, dictId }
   } catch (err) {
     return { success: false, error: String(err) }
   }
 }
-
+ 
+async function handleWriteDictEntries(msg: {
+  dictId: number
+  entries: Array<{ word: string; definition: string; example?: string }>
+}) {
+  try {
+    const rows = msg.entries.map(e => ({ ...e, dictId: msg.dictId }))
+    await db.dictEntries.bulkAdd(rows)
+    return { success: true }
+  } catch (err) {
+    return { success: false, error: String(err) }
+  }
+}
+ 
 async function handleGetDicts() {
   return { dicts: await db.dictionaries.orderBy('uploadedAt').reverse().toArray() }
 }
-
+ 
 async function handleToggleDict(id: number, active: boolean) {
   await db.dictionaries.update(id, { active })
   return { success: true }
 }
-
+ 
+// 修改 handleDeleteDict 函数
 async function handleDeleteDict(id: number) {
-  await db.transaction('rw', db.dictionaries, db.dictEntries, async () => {
-    await db.dictEntries.where('dictId').equals(id).delete()
-    await db.dictionaries.delete(id)
-  })
-  return { success: true }
-}
+  try {
+    // 1. 先把词典状态设为“正在删除”或直接从列表中隐藏，防止用户重复操作
+    // 这里我们先直接删除词典元数据，这样前端刷新后它就不会再出现了
+    await db.dictionaries.delete(id);
 
+    // 2. 开始分批删除词条，避免事务过载
+    const CHUNK_SIZE = 10000;
+    let deletedCount = 0;
+    
+    while (true) {
+      // 每次只找 10000 个对应的词条 ID
+      const keys = await db.dictEntries
+        .where('dictId').equals(id)
+        .limit(CHUNK_SIZE)
+        .primaryKeys();
+
+      if (keys.length === 0) break;
+
+      // 执行这一小块的删除
+      await db.dictEntries.bulkDelete(keys);
+      deletedCount += keys.length;
+      console.log(`[Wordsaver] 正在清理词典 ${id}: 已删除 ${deletedCount} 条...`);
+      
+      // 给事件循环一个空档，防止阻塞查询请求
+      await new Promise(resolve => setTimeout(resolve, 0));
+    }
+
+    return { success: true };
+  } catch (err) {
+    console.error("删除词典失败:", err);
+    return { success: false, error: String(err) };
+  }
+}
+ 
 // ─── Free Dictionary API ───────────────────────────────────────────────────────
 
 async function fetchFreeDict(word: string): Promise<SavedWord> {
@@ -283,8 +308,8 @@ function buildFromLocal(word: string, local: any): SavedWord {
     definitions: local.definition
       ? [{ partOfSpeech: '', meaning: local.definition }]
       : [],
+    translation: local.translation || undefined,
     examples: local.example ? [local.example] : [],
-    translation: '',
     tags: [],
     addedAt: Date.now(),
     reviewCount: 0,

@@ -119,6 +119,19 @@ export default function App() {
           显示选项
         </h2>
 
+        <Field label="默认 Tag（可选）">
+          <input
+            type="text"
+            value={settings.defaultTag}
+            onChange={e => update('defaultTag', normalizeTag(e.target.value))}
+            placeholder="例如：daily-reading"
+            className="input-field"
+          />
+        </Field>
+        <p className="text-xs text-[#585b70]">
+          在网页浮窗中“加入单词本”时默认使用该 Tag；留空则默认不带 Tag。
+        </p>
+
         <Toggle
           label="自动获取中文翻译"
           description="查词时同步请求翻译接口，显示中文释义"
@@ -236,6 +249,10 @@ function Toggle({
       </button>
     </div>
   )
+}
+
+function normalizeTag(raw: string) {
+  return raw.trim().toLowerCase().replace(/\s+/g, '-')
 }
 
 // ─── 数据操作 ─────────────────────────────────────────────────────────────────

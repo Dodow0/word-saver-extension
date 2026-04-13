@@ -9,7 +9,11 @@ let sessionTag: string = ''        // 当前会话选中的 tag
 let allSavedTags: string[] = []    // 历史 tag 列表缓存
 
 ;(async () => {
-  const res = await chrome.runtime.sendMessage({ type: 'GET_WORDSAVER' })
+  const [{ settings }, res] = await Promise.all([
+    chrome.storage.local.get('settings'),
+    chrome.runtime.sendMessage({ type: 'GET_WORDSAVER' }),
+  ])
+  sessionTag = normalizeTag(settings?.defaultTag ?? '')
   if (res?.allTags) allSavedTags = res.allTags
 })()
 
@@ -110,6 +114,8 @@ function showLoading(word: string, x: number, y: number) {
 function showPopup(data: any, alreadySaved: boolean, x: number, y: number) {
   const el = getOrCreatePopup()
   el.dataset.word = data.word.toLowerCase()
+  const selectableTags = Array.from(new Set([...(allSavedTags ?? []), ...(sessionTag ? [sessionTag] : [])]))
+    .sort()
 
  // 在 defsHtml map 里，兼容处理真实换行和字面量 \n
   const defsHtml = data.definitions
@@ -136,10 +142,10 @@ function showPopup(data: any, alreadySaved: boolean, x: number, y: number) {
        </div>`
     : ''
   // ── Tag 栏（只在有历史 tag 时显示）──────────────────────────────────
-  const tagBarHtml = allSavedTags.length > 0
+  const tagBarHtml = selectableTags.length > 0
     ? `<div class="wb-tag-bar">
         <span class="wb-tag-pill${sessionTag === '' ? ' wb-tag-active' : ''}" data-tag="">全部</span>
-        ${allSavedTags.map(t =>
+        ${selectableTags.map(t =>
           `<span class="wb-tag-pill${sessionTag === t ? ' wb-tag-active' : ''}" data-tag="${escapeHTML(t)}">#${escapeHTML(t)}</span>`
         ).join('')}
       </div>`
@@ -148,7 +154,7 @@ function showPopup(data: any, alreadySaved: boolean, x: number, y: number) {
       // 按钮根据 alreadySaved 初始状态渲染，避免"先显示可点击再变灰"的闪烁
   const btnHtml = alreadySaved
     ? `<button class="wb-add-btn" disabled>✓ 已在单词本中</button>`
-    : `<button class="wb-add-btn">＋ 加入单词本</button>`
+    : `<button class="wb-add-btn">＋ 加入单词本${sessionTag ? `（#${escapeHTML(sessionTag)}）` : ''}</button>`
 
   el.innerHTML = `
     ${tagBarHtml}
@@ -286,4 +292,8 @@ function escapeHTML(str: string): string {
     "'": '&#39;',
     '"': '&quot;'
   }[tag] || tag));
+}
+
+function normalizeTag(raw: string): string {
+  return raw.trim().toLowerCase().replace(/\s+/g, '-')
 }

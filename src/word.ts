@@ -75,6 +75,7 @@ export interface AppSettings {
   deeplApiKey?: string
   autoTranslate: boolean
   showPhonetic: boolean
+  defaultTag: string
   popupTrigger: 'select' | 'doubleclick'  // 触发方式
 }
 
@@ -82,5 +83,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   apiProvider: 'free-dictionary',
   autoTranslate: true,
   showPhonetic: true,
+  defaultTag: '',
   popupTrigger: 'select',  
 }

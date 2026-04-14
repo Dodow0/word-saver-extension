@@ -24,12 +24,20 @@
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
 }
-
+/* 标题栏外层：左右两端对齐 */
 #wordsaver-popup .wb-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+/* 单词与音标的包裹层 */
+#wordsaver-popup .wb-word-wrap {
   display: flex;
   align-items: baseline;
   gap: 8px;
-  margin-bottom: 8px;
+  flex-wrap: wrap; /* 加上换行，防止超长单词把发音按钮挤出屏幕 */
 }
 
 #wordsaver-popup .wb-word {
@@ -41,6 +49,28 @@
 #wordsaver-popup .wb-phonetic {
   font-size: 12px;
   color: #a6e3a1;
+}
+/* 发音按钮（适配 SVG 图标） */
+#wordsaver-popup .wb-speak-btn {
+  all: unset;
+  cursor: pointer;
+  display: flex;             /* 让内部的 SVG 完全居中 */
+  align-items: center;
+  justify-content: center;
+  color: #89b4fa;            /* 保持蓝色 */
+  padding: 4px;              /* 稍微加大 padding 提升点击手感 */
+  border-radius: 6px;
+  transition: all 0.15s ease;/* 改用 all 包含形变动画 */
+}
+/* 悬浮状态 */
+#wordsaver-popup .wb-speak-btn:hover {
+  color: #cba6f7;
+  background: #313244;
+  transform: translateY(-1px); /* 悬浮时轻微上浮 */
+}
+/* 按下状态 */
+#wordsaver-popup .wb-speak-btn:active {
+  transform: scale(0.92);      /* 按下时内缩，增加真实的物理按键反馈 */
 }
 
 #wordsaver-popup .wb-defs {

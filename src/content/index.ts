@@ -156,17 +156,34 @@ function showPopup(data: any, alreadySaved: boolean, x: number, y: number) {
     ? `<button class="wb-add-btn" disabled>✓ 已在单词本中</button>`
     : `<button class="wb-add-btn">＋ 加入单词本${sessionTag ? `（#${escapeHTML(sessionTag)}）` : ''}</button>`
 
+ // 在 showPopup 函数内部的 el.innerHTML 中进行修改
   el.innerHTML = `
     ${tagBarHtml}
-    <div class="wb-header">
-      <span class="wb-word">${escapeHTML(data.word)}</span>
-      ${data.phonetic ? `<span class="wb-phonetic">${escapeHTML(data.phonetic)}</span>` : ''}
+    <div class="wb-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <div class="wb-word-wrap">
+        <span class="wb-word" style="display: block;">${escapeHTML(data.word)}</span>
+        ${data.phonetic ? `<span class="wb-phonetic" style="display: block; font-size: 12px; margin-top: 2px;">${escapeHTML(data.phonetic)}</span>` : ''}
+      </div>
+      <button class="wb-speak-btn" data-speak="${escapeHTML(data.word)}" title="朗读单词" aria-label="朗读 ${escapeHTML(data.word)}">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+          <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+          <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+        </svg>
+      </button>
     </div>
     ${translationHtml}
     <ul class="wb-defs">${defsHtml}</ul>
     ${exampleHtml}
     ${btnHtml}
-  `
+  `;
+  
+  const speakBtn = el.querySelector<HTMLButtonElement>('.wb-speak-btn')
+  if (speakBtn) {
+    speakBtn.addEventListener('click', (e) => {
+      e.stopPropagation()
+      speakText(speakBtn.dataset.speak ?? '')
+    })
+  }
     // ── tag 点击事件 ────────────────────────────────────────────────────
   el.querySelectorAll<HTMLSpanElement>('.wb-tag-pill').forEach(pill => {
     pill.addEventListener('click', (e) => {
@@ -296,4 +313,13 @@ function escapeHTML(str: string): string {
 
 function normalizeTag(raw: string): string {
   return raw.trim().toLowerCase().replace(/\s+/g, '-')
+}
+
+function speakText(text: string) {
+  if (!text || !('speechSynthesis' in window)) return
+  window.speechSynthesis.cancel()
+  const utterance = new SpeechSynthesisUtterance(text)
+  utterance.lang = 'en-US'
+  utterance.rate = 0.95
+  window.speechSynthesis.speak(utterance)
 }

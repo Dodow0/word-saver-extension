@@ -210,9 +210,37 @@ function WordCard({ word, expanded, onToggle, onDelete, onUpdateTags, allTags }:
  
   return (
     <li className="rounded-xl border border-[#313244] hover:border-[#45475a] transition-colors">
-      <button onClick={onToggle} className="w-full flex items-center justify-between px-4 py-2.5 text-left">
-        <div className="flex items-baseline gap-2">
+      <div
+        onClick={onToggle}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault()
+            onToggle()
+          }
+        }}
+        role="button"
+        tabIndex={0}
+        className="w-full flex items-center justify-between px-4 py-2.5 text-left cursor-pointer"
+      >
+       <div className="flex items-center gap-2">
           <span className="text-[#cba6f7] font-semibold text-[15px]">{word.word}</span>
+          
+          {/* 替换为 SVG 发音按钮 */}
+          <button
+            onClick={e => {
+              e.stopPropagation()
+              speakText(word.word)
+            }}
+            className="flex items-center justify-center p-1 rounded-md text-[#a6adc8] transition-all duration-150 ease-in-out hover:bg-[#313244] hover:text-[#cba6f7] hover:-translate-y-[1px] active:scale-90"
+            title="朗读单词"
+            aria-label={`朗读 ${word.word}`}
+          >
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"></polygon>
+              <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"></path>
+            </svg>
+          </button>
+
           {word.phonetic && <span className="text-[#a6e3a1] text-[11px]">{word.phonetic}</span>}
         </div>
         <div className="flex items-center gap-1.5">
@@ -223,7 +251,7 @@ function WordCard({ word, expanded, onToggle, onDelete, onUpdateTags, allTags }:
           ))}
           <span className="text-[#585b70] text-xs ml-1">{expanded ? '▲' : '▼'}</span>
         </div>
-      </button>
+      </div>
  
       {expanded && (
         <div className="px-4 pb-3 space-y-2 border-t border-[#313244]">
@@ -306,4 +334,14 @@ function SettingsTab() {
 
 function fmtDate() {
   return new Date().toISOString().slice(0, 10)
+}
+
+
+function speakText(text: string) {
+  if (!text || !('speechSynthesis' in window)) return
+  window.speechSynthesis.cancel()
+  const utterance = new SpeechSynthesisUtterance(text)
+  utterance.lang = 'en-US'
+  utterance.rate = 0.95
+  window.speechSynthesis.speak(utterance)
 }

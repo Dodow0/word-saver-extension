@@ -27,25 +27,29 @@ export default function App() {
     })
   }
 
-  async function runWebdavAction(type: 'WEBDAV_BACKUP' | 'WEBDAV_RESTORE') {
+// --- src/options/App.tsx (修改 runWebdavAction) ---
+
+  async function runWebdavAction(type: 'WEBDAV_FORCE_PUSH' | 'WEBDAV_FORCE_PULL' | 'WEBDAV_SMART_MERGE') {
     setSyncing(true)
     setSyncMessage('')
     try {
       await chrome.storage.local.set({ settings })
       const res = await chrome.runtime.sendMessage({ type })
       if (!res?.success) {
-        throw new Error(res?.error ?? '同步失败')
+        throw new Error(res?.error ?? '操作失败')
       }
-      if (type === 'WEBDAV_BACKUP') {
-        setSyncMessage(`备份成功：${new Date(res.exportedAt).toLocaleString()}`)
-      } else {
-        const summary = res.summary
-        setSyncMessage(
-          `恢复成功：新增单词 ${summary.savedWordsAdded}，合并单词 ${summary.savedWordsMerged}，新增词条 ${summary.dictEntriesAdded}`
-        )
+      
+      // 根据不同的操作类型，给出精准的成功提示
+      if (type === 'WEBDAV_FORCE_PUSH') {
+        setSyncMessage(`✓ 强制推送成功：已覆盖云端，共 ${res.summary.savedWords} 个单词 (${new Date(res.exportedAt).toLocaleString()})`)
+      } else if (type === 'WEBDAV_FORCE_PULL') {
+        setSyncMessage(`✓ 强制拉取成功：本地已被云端覆盖，共 ${res.summary.savedWordsAdded} 个单词`)
+      } else if (type === 'WEBDAV_SMART_MERGE') {
+        setSyncMessage(`✓ 智能合并成功：多端数据已对齐，云端共 ${res.summary.savedWords} 个单词 (${new Date(res.exportedAt).toLocaleString()})`)
       }
+      
     } catch (error) {
-      setSyncMessage(`WebDAV 操作失败：${String(error)}`)
+      setSyncMessage(`✗ WebDAV 操作失败：${String(error)}`)
     } finally {
       setSyncing(false)
     }
@@ -244,25 +248,45 @@ export default function App() {
           />
         </Field>
         <p className="text-xs text-[#585b70]">
-          备份：将 Dexie 数据导出成 JSON 上传到 WebDAV。恢复：下载 JSON，并按词典名/单词做增量合并，不覆盖整库。
+          支持双向智能增量合并（推荐使用，两边单词互不丢失）。如果多台设备数据产生严重冲突，也可使用强制覆盖策略。
         </p>
-        <div className="flex gap-3">
+        
+        <div className="flex flex-col gap-3">
+          {/* 1. 推荐的合并操作：占据整行，使用微弱的绿色背景强调 */}
           <button
-            onClick={() => runWebdavAction('WEBDAV_BACKUP')}
+            onClick={() => runWebdavAction('WEBDAV_SMART_MERGE')}
             disabled={syncing}
-            className="px-4 py-2 bg-[#313244] text-[#a6e3a1] rounded-lg text-sm
-                       hover:bg-[#45475a] transition-colors disabled:opacity-50"
+            className="w-full flex justify-center items-center gap-2 px-4 py-2.5 bg-[#a6e3a1]/10 text-[#a6e3a1] border border-[#a6e3a1]/30 rounded-lg text-sm font-medium hover:bg-[#a6e3a1]/20 transition-all disabled:opacity-50"
           >
-            {syncing ? '处理中...' : '备份到 WebDAV'}
+            ✦ 智能增量合并 (推荐)
           </button>
-          <button
-            onClick={() => runWebdavAction('WEBDAV_RESTORE')}
-            disabled={syncing}
-            className="px-4 py-2 bg-[#313244] text-[#89b4fa] rounded-lg text-sm
-                       hover:bg-[#45475a] transition-colors disabled:opacity-50"
-          >
-            {syncing ? '处理中...' : '从 WebDAV 恢复'}
-          </button>
+
+          {/* 2. 危险的覆盖操作：并排显示 */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              onClick={() => {
+                if (confirm('【危险】此操作将用当前的本地单词本，完全抹除并覆盖云端数据！\n\n是否继续？')) {
+                  runWebdavAction('WEBDAV_FORCE_PUSH')
+                }
+              }}
+              disabled={syncing}
+              className="flex justify-center items-center gap-1.5 px-4 py-2 bg-[#313244] text-[#f38ba8] border border-[#313244] rounded-lg text-sm hover:bg-[#f38ba8]/15 hover:border-[#f38ba8]/30 transition-all disabled:opacity-50"
+            >
+              ↑ 强制推送到云端 (覆盖)
+            </button>
+
+            <button
+              onClick={() => {
+                if (confirm('【危险】此操作将清空当前的本地单词本，完全使用云端数据覆盖！\n\n是否继续？')) {
+                  runWebdavAction('WEBDAV_FORCE_PULL')
+                }
+              }}
+              disabled={syncing}
+              className="flex justify-center items-center gap-1.5 px-4 py-2 bg-[#313244] text-[#fab387] border border-[#313244] rounded-lg text-sm hover:bg-[#fab387]/15 hover:border-[#fab387]/30 transition-all disabled:opacity-50"
+            >
+              ↓ 强制拉取到本地 (覆盖)
+            </button>
+          </div>
         </div>
         {syncMessage && <p className="text-xs text-[#bac2de]">{syncMessage}</p>}
       </section>

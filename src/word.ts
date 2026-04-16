@@ -42,8 +42,9 @@ export interface WriteDictEntriesMessage {
 export interface GetDictsMessage      { type: 'GET_DICTS' }
 export interface ToggleDictMessage    { type: 'TOGGLE_DICT';    id: number; active: boolean }
 export interface DeleteDictMessage    { type: 'DELETE_DICT';    id: number }
-export interface WebdavBackupMessage  { type: 'WEBDAV_BACKUP' }
-export interface WebdavRestoreMessage { type: 'WEBDAV_RESTORE' }
+export interface WebdavForcePushMessage  { type: 'WEBDAV_FORCE_PUSH' }
+export interface WebdavForcePullMessage  { type: 'WEBDAV_FORCE_PULL' }
+export interface WebdavSmartMergeMessage { type: 'WEBDAV_SMART_MERGE' }
 
 // 联合类型：所有可能的消息
 export type ExtensionMessage =
@@ -62,8 +63,9 @@ export type ExtensionMessage =
   | GetDictsMessage
   | ToggleDictMessage
   | DeleteDictMessage
-  | WebdavBackupMessage
-  | WebdavRestoreMessage
+  | WebdavForcePushMessage    
+  | WebdavForcePullMessage    
+  | WebdavSmartMergeMessage
 
 // ─── 存储结构 ─────────────────────────────────────────────────────────────────
 

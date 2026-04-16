@@ -65,12 +65,15 @@ chrome.runtime.onMessage.addListener(
       case 'DELETE_DICT':
         safe(handleDeleteDict(message.id))
         return true
-      case 'WEBDAV_BACKUP':
-        safe(handleWebdavBackup())
+      case 'WEBDAV_FORCE_PUSH':
+        safe(handleWebdavForcePush())
         return true
-      case 'WEBDAV_RESTORE':
-        safe(handleWebdavRestore())
+      case 'WEBDAV_FORCE_PULL':
+        safe(handleWebdavForcePull())
         return true
+      case 'WEBDAV_SMART_MERGE':
+        safe(handleWebdavSmartMerge())
+        return true 
  
       default:
         // 未知消息类型：立即回复，防止 sendMessage 对端永远等待
@@ -278,8 +281,79 @@ type SyncPayload = {
   savedWords: SavedWord[]
 }
 
-// 修改 handleWebdavBackup 变身真正的“双向增量同步”
-async function handleWebdavBackup() {
+// 1. 强制推送 (覆盖云端)
+async function handleWebdavForcePush() {
+  const settings = await getSettingsWithDefaults()
+  const targetUrl = buildWebdavFileUrl(settings)
+  const auth = basicAuthHeader(settings.webdavUsername, settings.webdavPassword)
+
+  // 直接从本地读取所有数据
+  const savedWords = await db.savedWords.toArray()
+  const payload: SyncPayload = {
+    version: 1,
+    exportedAt: Date.now(),
+    savedWords: savedWords.map(({ id: _id, ...rest }) => rest), // 剔除本地自增ID
+  }
+
+  // 强行 PUT 覆盖远程文件
+  const putRes = await fetch(targetUrl, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      Authorization: auth,
+    },
+    body: JSON.stringify(payload, null, 2),
+  })
+
+  if (!putRes.ok) throw new Error(`WebDAV 上传失败: ${putRes.status} ${putRes.statusText}`)
+
+  return {
+    success: true,
+    exportedAt: payload.exportedAt,
+    summary: { savedWords: payload.savedWords.length },
+  }
+}
+
+// 2. 强制拉取 (覆盖本地)
+async function handleWebdavForcePull() {
+  const settings = await getSettingsWithDefaults()
+  const targetUrl = buildWebdavFileUrl(settings)
+  const auth = basicAuthHeader(settings.webdavUsername, settings.webdavPassword)
+  
+  // 从云端拉取
+  const res = await fetch(targetUrl, {
+    method: 'GET',
+    headers: { Authorization: auth },
+  })
+
+  if (!res.ok) throw new Error(`WebDAV 下载失败: ${res.status} ${res.statusText}`)
+
+  const payload = await res.json() as SyncPayload
+  validateSyncPayload(payload)
+
+  // 执行危险操作：清空本地单词本表
+  await db.savedWords.clear()
+
+  // 将拉取的数据作为新数据全部插入
+  const wordsToAdd = payload.savedWords.map(incoming => ({
+    ...incoming,
+    tags: incoming.tags ?? [],
+    definitions: incoming.definitions ?? [],
+    examples: incoming.examples ?? [],
+    addedAt: incoming.addedAt ?? Date.now(),
+    reviewCount: incoming.reviewCount ?? 0,
+  }))
+  
+  await db.savedWords.bulkAdd(wordsToAdd)
+
+  return {
+    success: true,
+    summary: { savedWordsAdded: wordsToAdd.length }
+  }
+}
+
+// 3. 智能增量合并 (拉取 -> 合并 -> 推送)
+async function handleWebdavSmartMerge() {
   const settings = await getSettingsWithDefaults()
   const targetUrl = buildWebdavFileUrl(settings)
   const auth = basicAuthHeader(settings.webdavUsername, settings.webdavPassword)
@@ -292,13 +366,11 @@ async function handleWebdavBackup() {
     })
     
     if (getRes.ok) {
-      // 如果远程有文件，先解析并增量合并到本地数据库（Merge）
       const remotePayload = await getRes.json() as SyncPayload
       validateSyncPayload(remotePayload)
-      await mergeSyncPayload(remotePayload) // 这里会执行 Tags 的合并和新词的追加
+      await mergeSyncPayload(remotePayload) 
       console.log('[WebDAV Sync] 成功将远程增量数据合并至本地')
     } else if (getRes.status !== 404) {
-      // 404 说明远程还没有文件（首次备份），属于正常情况。
       console.warn(`[WebDAV Sync] 获取远程文件失败: ${getRes.status}, 将执行首次覆盖`)
     }
   } catch (err) {
@@ -306,12 +378,11 @@ async function handleWebdavBackup() {
   }
 
   // === 第二步：从本地数据库读取合并后的最全数据 ===
-  // 此时本地数据库已经融合了多台电脑的增量数据
   const savedWords = await db.savedWords.toArray()
   const payload: SyncPayload = {
     version: 1,
     exportedAt: Date.now(),
-    savedWords: savedWords.map(({ id: _id, ...rest }) => rest), // 剔除本地自增ID
+    savedWords: savedWords.map(({ id: _id, ...rest }) => rest), 
   }
 
   // === 第三步：将最全数据推送到远程（Push） ===
@@ -324,36 +395,13 @@ async function handleWebdavBackup() {
     body: JSON.stringify(payload, null, 2),
   })
 
-  if (!putRes.ok) {
-    throw new Error(`WebDAV 上传失败: ${putRes.status} ${putRes.statusText}`)
-  }
+  if (!putRes.ok) throw new Error(`WebDAV 同步上传失败: ${putRes.status} ${putRes.statusText}`)
 
   return {
     success: true,
     exportedAt: payload.exportedAt,
-    summary: {
-      savedWords: payload.savedWords.length,
-    },
+    summary: { savedWords: payload.savedWords.length },
   }
-}
-
-async function handleWebdavRestore() {
-  const settings = await getSettingsWithDefaults()
-  const targetUrl = buildWebdavFileUrl(settings)
-  const auth = basicAuthHeader(settings.webdavUsername, settings.webdavPassword)
-  const res = await fetch(targetUrl, {
-    method: 'GET',
-    headers: { Authorization: auth },
-  })
-
-  if (!res.ok) {
-    throw new Error(`WebDAV 下载失败: ${res.status} ${res.statusText}`)
-  }
-
-  const payload = await res.json() as SyncPayload
-  validateSyncPayload(payload)
-  const result = await mergeSyncPayload(payload)
-  return { success: true, ...result }
 }
 
 async function getSettingsWithDefaults(): Promise<AppSettings> {

@@ -6,6 +6,8 @@ import DictionaryManager from './dictionarymanager'
 export default function App() {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS)
   const [saved, setSaved] = useState(false)
+  const [syncing, setSyncing] = useState(false)
+  const [syncMessage, setSyncMessage] = useState('')
 
   // 加载已保存的设置
   useEffect(() => {
@@ -23,6 +25,30 @@ export default function App() {
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     })
+  }
+
+  async function runWebdavAction(type: 'WEBDAV_BACKUP' | 'WEBDAV_RESTORE') {
+    setSyncing(true)
+    setSyncMessage('')
+    try {
+      await chrome.storage.local.set({ settings })
+      const res = await chrome.runtime.sendMessage({ type })
+      if (!res?.success) {
+        throw new Error(res?.error ?? '同步失败')
+      }
+      if (type === 'WEBDAV_BACKUP') {
+        setSyncMessage(`备份成功：${new Date(res.exportedAt).toLocaleString()}`)
+      } else {
+        const summary = res.summary
+        setSyncMessage(
+          `恢复成功：新增单词 ${summary.savedWordsAdded}，合并单词 ${summary.savedWordsMerged}，新增词条 ${summary.dictEntriesAdded}`
+        )
+      }
+    } catch (error) {
+      setSyncMessage(`WebDAV 操作失败：${String(error)}`)
+    } finally {
+      setSyncing(false)
+    }
   }
 
   return (
@@ -173,6 +199,73 @@ export default function App() {
         </Field>
       </section>
       <DictionaryManager />
+
+      {/* ── WebDAV 同步 ─────────────────────────────────────────────────────── */}
+      <section className="space-y-4">
+        <h2 className="text-sm font-semibold text-[#89b4fa] uppercase tracking-widest">
+          WebDAV 同步（文件级 + 增量合并）
+        </h2>
+        <Field label="WebDAV 地址">
+          <input
+            type="url"
+            value={settings.webdavUrl}
+            onChange={e => update('webdavUrl', e.target.value.trim())}
+            placeholder="例如：https://dav.example.com/remote.php/dav/files/your-name"
+            className="input-field"
+          />
+        </Field>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <Field label="用户名">
+            <input
+              type="text"
+              value={settings.webdavUsername}
+              onChange={e => update('webdavUsername', e.target.value)}
+              placeholder="WebDAV 用户名"
+              className="input-field"
+            />
+          </Field>
+          <Field label="密码 / 应用专用密码">
+            <input
+              type="password"
+              value={settings.webdavPassword}
+              onChange={e => update('webdavPassword', e.target.value)}
+              placeholder="WebDAV 密码"
+              className="input-field"
+            />
+          </Field>
+        </div>
+        <Field label="备份文件路径">
+          <input
+            type="text"
+            value={settings.webdavFilePath}
+            onChange={e => update('webdavFilePath', e.target.value)}
+            placeholder="/wordsaver-backup.json"
+            className="input-field"
+          />
+        </Field>
+        <p className="text-xs text-[#585b70]">
+          备份：将 Dexie 数据导出成 JSON 上传到 WebDAV。恢复：下载 JSON，并按词典名/单词做增量合并，不覆盖整库。
+        </p>
+        <div className="flex gap-3">
+          <button
+            onClick={() => runWebdavAction('WEBDAV_BACKUP')}
+            disabled={syncing}
+            className="px-4 py-2 bg-[#313244] text-[#a6e3a1] rounded-lg text-sm
+                       hover:bg-[#45475a] transition-colors disabled:opacity-50"
+          >
+            {syncing ? '处理中...' : '备份到 WebDAV'}
+          </button>
+          <button
+            onClick={() => runWebdavAction('WEBDAV_RESTORE')}
+            disabled={syncing}
+            className="px-4 py-2 bg-[#313244] text-[#89b4fa] rounded-lg text-sm
+                       hover:bg-[#45475a] transition-colors disabled:opacity-50"
+          >
+            {syncing ? '处理中...' : '从 WebDAV 恢复'}
+          </button>
+        </div>
+        {syncMessage && <p className="text-xs text-[#bac2de]">{syncMessage}</p>}
+      </section>
 
       {/* ── 数据管理 ─────────────────────────────────────────────────────── */}
       <section className="space-y-4">

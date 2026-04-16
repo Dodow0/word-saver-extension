@@ -42,6 +42,8 @@ export interface WriteDictEntriesMessage {
 export interface GetDictsMessage      { type: 'GET_DICTS' }
 export interface ToggleDictMessage    { type: 'TOGGLE_DICT';    id: number; active: boolean }
 export interface DeleteDictMessage    { type: 'DELETE_DICT';    id: number }
+export interface WebdavBackupMessage  { type: 'WEBDAV_BACKUP' }
+export interface WebdavRestoreMessage { type: 'WEBDAV_RESTORE' }
 
 // 联合类型：所有可能的消息
 export type ExtensionMessage =
@@ -60,6 +62,8 @@ export type ExtensionMessage =
   | GetDictsMessage
   | ToggleDictMessage
   | DeleteDictMessage
+  | WebdavBackupMessage
+  | WebdavRestoreMessage
 
 // ─── 存储结构 ─────────────────────────────────────────────────────────────────
 
@@ -77,6 +81,10 @@ export interface AppSettings {
   showPhonetic: boolean
   defaultTag: string
   popupTrigger: 'select' | 'doubleclick'  // 触发方式
+  webdavUrl: string
+  webdavUsername: string
+  webdavPassword: string
+  webdavFilePath: string
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -84,5 +92,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   autoTranslate: true,
   showPhonetic: true,
   defaultTag: '',
-  popupTrigger: 'select',  
+  popupTrigger: 'select',
+  webdavUrl: '',
+  webdavUsername: '',
+  webdavPassword: '',
+  webdavFilePath: '/wordsaver-backup.json',
 }

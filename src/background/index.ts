@@ -9,6 +9,7 @@ import type {
   AddWordMessage,
   GetWordsaverMessage,
   DeleteWordMessage,
+  AppSettings,
 } from '@/word'
 import type { SavedWord } from '@/db'
 
@@ -63,6 +64,12 @@ chrome.runtime.onMessage.addListener(
         return true
       case 'DELETE_DICT':
         safe(handleDeleteDict(message.id))
+        return true
+      case 'WEBDAV_BACKUP':
+        safe(handleWebdavBackup())
+        return true
+      case 'WEBDAV_RESTORE':
+        safe(handleWebdavRestore())
         return true
  
       default:
@@ -262,6 +269,171 @@ async function handleDeleteDict(id: number) {
   } catch (err) {
     console.error("删除词典失败:", err);
     return { success: false, error: String(err) };
+  }
+}
+
+type SyncPayload = {
+  version: 1
+  exportedAt: number
+  savedWords: SavedWord[]
+}
+
+// 修改 handleWebdavBackup 变身真正的“双向增量同步”
+async function handleWebdavBackup() {
+  const settings = await getSettingsWithDefaults()
+  const targetUrl = buildWebdavFileUrl(settings)
+  const auth = basicAuthHeader(settings.webdavUsername, settings.webdavPassword)
+
+  // === 第一步：先尝试获取远程文件（Pull） ===
+  try {
+    const getRes = await fetch(targetUrl, {
+      method: 'GET',
+      headers: { Authorization: auth },
+    })
+    
+    if (getRes.ok) {
+      // 如果远程有文件，先解析并增量合并到本地数据库（Merge）
+      const remotePayload = await getRes.json() as SyncPayload
+      validateSyncPayload(remotePayload)
+      await mergeSyncPayload(remotePayload) // 这里会执行 Tags 的合并和新词的追加
+      console.log('[WebDAV Sync] 成功将远程增量数据合并至本地')
+    } else if (getRes.status !== 404) {
+      // 404 说明远程还没有文件（首次备份），属于正常情况。
+      console.warn(`[WebDAV Sync] 获取远程文件失败: ${getRes.status}, 将执行首次覆盖`)
+    }
+  } catch (err) {
+    console.warn('[WebDAV Sync] 远程文件不存在或网络异常，作为首次备份处理', err)
+  }
+
+  // === 第二步：从本地数据库读取合并后的最全数据 ===
+  // 此时本地数据库已经融合了多台电脑的增量数据
+  const savedWords = await db.savedWords.toArray()
+  const payload: SyncPayload = {
+    version: 1,
+    exportedAt: Date.now(),
+    savedWords: savedWords.map(({ id: _id, ...rest }) => rest), // 剔除本地自增ID
+  }
+
+  // === 第三步：将最全数据推送到远程（Push） ===
+  const putRes = await fetch(targetUrl, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json; charset=utf-8',
+      Authorization: auth,
+    },
+    body: JSON.stringify(payload, null, 2),
+  })
+
+  if (!putRes.ok) {
+    throw new Error(`WebDAV 上传失败: ${putRes.status} ${putRes.statusText}`)
+  }
+
+  return {
+    success: true,
+    exportedAt: payload.exportedAt,
+    summary: {
+      savedWords: payload.savedWords.length,
+    },
+  }
+}
+
+async function handleWebdavRestore() {
+  const settings = await getSettingsWithDefaults()
+  const targetUrl = buildWebdavFileUrl(settings)
+  const auth = basicAuthHeader(settings.webdavUsername, settings.webdavPassword)
+  const res = await fetch(targetUrl, {
+    method: 'GET',
+    headers: { Authorization: auth },
+  })
+
+  if (!res.ok) {
+    throw new Error(`WebDAV 下载失败: ${res.status} ${res.statusText}`)
+  }
+
+  const payload = await res.json() as SyncPayload
+  validateSyncPayload(payload)
+  const result = await mergeSyncPayload(payload)
+  return { success: true, ...result }
+}
+
+async function getSettingsWithDefaults(): Promise<AppSettings> {
+  const { settings } = await chrome.storage.local.get('settings')
+  const merged = {
+    apiProvider: 'free-dictionary',
+    autoTranslate: true,
+    showPhonetic: true,
+    defaultTag: '',
+    popupTrigger: 'select',
+    webdavUrl: '',
+    webdavUsername: '',
+    webdavPassword: '',
+    webdavFilePath: '/wordsaver-backup.json',
+    ...(settings ?? {}),
+  } as AppSettings
+
+  if (!merged.webdavUrl || !merged.webdavUsername) {
+    throw new Error('请先在设置页填写 WebDAV 地址与用户名')
+  }
+  return merged
+}
+
+function buildWebdavFileUrl(settings: AppSettings): string {
+  const base = settings.webdavUrl.trim().replace(/\/+$/, '')
+  const filePath = settings.webdavFilePath.trim() || '/wordsaver-backup.json'
+  const normalizedPath = filePath.startsWith('/') ? filePath : `/${filePath}`
+  return `${base}${normalizedPath}`
+}
+
+function basicAuthHeader(username: string, password: string): string {
+  return `Basic ${btoa(`${username}:${password}`)}`
+}
+
+function validateSyncPayload(payload: SyncPayload) {
+  if (!payload || payload.version !== 1) {
+    throw new Error('不支持的备份格式版本')
+  }
+  if (!Array.isArray(payload.savedWords)) {
+    throw new Error('备份文件结构不完整')
+  }
+}
+
+async function mergeSyncPayload(payload: SyncPayload) {
+  const localWords = await db.savedWords.toArray()
+  const wordToLocal = new Map(localWords.map(w => [w.word.toLowerCase(), w] as const))
+  let mergedWords = 0
+  let addedWords = 0
+
+  for (const incoming of payload.savedWords) {
+    const key = incoming.word.toLowerCase()
+    const existed = wordToLocal.get(key)
+    if (existed?.id !== undefined) {
+      const mergedTags = Array.from(new Set([...(existed.tags ?? []), ...(incoming.tags ?? [])]))
+      const next = (incoming.addedAt ?? 0) >= (existed.addedAt ?? 0) ? incoming : existed
+      await db.savedWords.update(existed.id, {
+        ...next,
+        tags: mergedTags,
+        reviewCount: Math.max(existed.reviewCount ?? 0, incoming.reviewCount ?? 0),
+      })
+      mergedWords += 1
+    } else {
+      await db.savedWords.add({
+        ...incoming,
+        tags: incoming.tags ?? [],
+        definitions: incoming.definitions ?? [],
+        examples: incoming.examples ?? [],
+        addedAt: incoming.addedAt ?? Date.now(),
+        reviewCount: incoming.reviewCount ?? 0,
+      })
+      addedWords += 1
+    }
+  }
+
+  return {
+    importedAt: Date.now(),
+    summary: {
+      savedWordsAdded: addedWords,
+      savedWordsMerged: mergedWords,
+    },
   }
 }
  
